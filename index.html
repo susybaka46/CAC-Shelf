@@ -27,15 +27,18 @@
     font-family: 'Inter', sans-serif;
     font-size: 14px;
     min-height: 100vh;
-    overflow-x: hidden;
+    overflow-x: clip; /* clip, not hidden: hidden turns body into a scroll box and breaks the sticky top bar */
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
 
   /* ============ LAYOUT ============ */
-  .app { min-height: 100vh; display: flex; }
+  /* --sb-w (sidebar width) and --sb-p (0 = collapsed, 1 = expanded) are driven by a spring in JS,
+     so the collapse can be grabbed and reversed mid-motion. Sidebar padding stays at 12px in both
+     states so the icons never shift: 12 + 10.5 + 7.5 = 30px = the centre of the 60px rail. */
+  .app { min-height: 100vh; display: flex; --sb-w: 220px; --sb-p: 1; }
   .sidebar {
-    width: 220px;
+    width: var(--sb-w);
     height: 100vh;
     position: fixed;
     top: 0; left: 0;
@@ -45,24 +48,20 @@
     display: flex;
     flex-direction: column;
     z-index: 10;
-    transition: width 0.25s ease;
+    overflow: hidden;
   }
-  .app.collapsed .sidebar { width: 60px; padding: 22px 8px; }
   .main {
-    margin-left: 220px;
+    margin-left: var(--sb-w);
     flex: 1;
     min-height: 100vh;
-    width: calc(100% - 220px);
-    transition: margin-left 0.25s ease, width 0.25s ease;
+    width: calc(100% - var(--sb-w));
   }
-  .app.collapsed .main { margin-left: 60px; width: calc(100% - 60px); }
 
   /* ============ SIDEBAR ============ */
   .sb-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 4px 8px 20px;
+    padding: 0 0 18px;
     margin-bottom: 8px;
     border-bottom: 1px solid var(--line);
   }
@@ -73,29 +72,36 @@
     letter-spacing: -0.02em;
     line-height: 1;
     color: var(--ink);
+    flex: 1 1 0;
+    min-width: 0;
+    text-indent: 10.5px; /* indent instead of padding so the brand can shrink to zero width */
+    white-space: nowrap;
+    overflow: hidden;
+    opacity: var(--sb-p);
   }
   .sb-toggle {
     background: transparent;
     border: none;
     color: var(--ink-3);
     cursor: pointer;
-    padding: 4px;
+    width: 36px;
+    height: 30px;
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 4px;
-    transition: all 0.15s;
+    border-radius: 6px;
+    transition: background 0.15s, color 0.15s, transform 120ms ease-out;
   }
   .sb-toggle:hover { color: var(--ink); background: var(--bg-soft); }
-  .sb-toggle svg { width: 14px; height: 14px; }
-  .app.collapsed .sb-brand { display: none; }
+  .sb-toggle svg { width: 15px; height: 15px; }
 
   .sb-nav { display: flex; flex-direction: column; gap: 1px; margin-top: 12px; }
   .sb-item {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 7px 10px;
+    padding: 7px 10.5px;
     background: transparent;
     border: none;
     color: var(--ink-2);
@@ -106,7 +112,7 @@
     border-radius: 6px;
     text-align: left;
     width: 100%;
-    transition: all 0.12s;
+    transition: background 0.12s, color 0.12s, transform 120ms ease-out;
     white-space: nowrap;
     overflow: hidden;
     letter-spacing: -0.005em;
@@ -117,9 +123,7 @@
     color: var(--bg);
   }
   .sb-item svg { width: 15px; height: 15px; flex-shrink: 0; stroke-width: 1.75; }
-  .sb-item-label { flex: 1; }
-  .app.collapsed .sb-item-label { display: none; }
-  .app.collapsed .sb-item { justify-content: center; padding: 8px; }
+  .sb-item-label { flex: 1; opacity: var(--sb-p); }
 
   .sb-section {
     font-size: 10px;
@@ -127,9 +131,22 @@
     text-transform: uppercase;
     letter-spacing: 0.1em;
     color: var(--ink-4);
-    padding: 16px 12px 6px;
+    padding: 16px 10.5px 6px;
+    white-space: nowrap;
+    position: relative;
   }
-  .app.collapsed .sb-section { display: none; }
+  .sb-section span { opacity: var(--sb-p); }
+  /* When collapsed, the label fades out and a divider fades in, matching the line under the toggle */
+  .sb-section::before {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    top: 22px; /* exact middle of the gap between the icon above and the icon below */
+    height: 1px;
+    background: var(--line);
+    opacity: calc(1 - var(--sb-p));
+    pointer-events: none;
+  }
 
   .sb-footer {
     margin-top: auto;
@@ -143,14 +160,26 @@
     justify-content: space-between;
     align-items: center;
     padding: 20px 40px;
-    border-bottom: 1px solid var(--line);
     position: sticky;
     top: 0;
-    background: rgba(255, 255, 255, 0.9);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    /* Translucent material: content scrolls underneath instead of the bar eating a fixed strip */
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
     z-index: 5;
   }
+  /* Scroll edge effect: a soft fade only appears once content actually sits under the bar */
+  .topbar::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; bottom: -14px;
+    height: 14px;
+    background: linear-gradient(to bottom, rgba(10, 10, 10, 0.05), rgba(10, 10, 10, 0));
+    opacity: 0;
+    transition: opacity 200ms ease;
+    pointer-events: none;
+  }
+  .topbar.scrolled::after { opacity: 1; }
   .page-title {
     font-family: 'Fraunces', serif;
     font-size: 22px;
@@ -376,8 +405,12 @@
   }
   .feature-progress-fill {
     height: 100%;
+    width: 100%;
     background: var(--accent);
     border-radius: 2px;
+    transform-origin: left center;
+    transform: scaleX(0);
+    will-change: transform;
   }
   .feature-progress-text {
     display: flex;
@@ -468,7 +501,11 @@
   }
   .book-progress-fill {
     height: 100%;
+    width: 100%;
     background: var(--accent);
+    transform-origin: left center;
+    transform: scaleX(0);
+    will-change: transform;
   }
   .empty {
     grid-column: 1/-1;
@@ -611,10 +648,11 @@
     position: relative;
   }
   .chart-bar:hover { opacity: 0.75; }
-  .chart-bar.empty {
+  /* Days with no reading: a small stub on the axis, so the day still reads as "zero" */
+  .chart-bar.is-empty {
     background: var(--line);
-    min-height: 0;
-    height: 0 !important;
+    height: 3px;
+    border-radius: 2px 2px 0 0;
   }
   .chart-value {
     position: absolute;
@@ -719,41 +757,67 @@
   }
 
   /* ============ MODAL ============ */
-  .modal-backdrop {
+  /* All three overlays share one spring-driven "sheet" system (see createSheet in the script).
+     --scrim goes 0 to 1: the dim and the blur materialise together instead of a flat fade. */
+  .modal-backdrop, .settings-backdrop, .confirm-backdrop {
     position: fixed; inset: 0;
-    background: rgba(10, 10, 10, 0.35);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    z-index: 100;
+    --scrim: 0;
+    background: rgba(10, 10, 10, calc(0.32 * var(--scrim)));
+    backdrop-filter: blur(calc(6px * var(--scrim)));
+    -webkit-backdrop-filter: blur(calc(6px * var(--scrim)));
     display: none;
     align-items: center;
     justify-content: center;
     padding: 24px;
-    animation: fade 0.2s ease;
   }
-  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
-  .modal-backdrop.open { display: flex; }
+  .modal-backdrop { z-index: 100; }
+  .settings-backdrop { z-index: 150; }
+  .confirm-backdrop { z-index: 200; }
+  .modal-backdrop.open, .settings-backdrop.open, .confirm-backdrop.open { display: flex; }
+  .modal, .settings-panel, .confirm-box { will-change: transform, opacity; }
   .modal {
     background: var(--bg);
     border-radius: 14px;
-    padding: 32px;
+    padding: 14px 32px 32px;
     max-width: 520px;
     width: 100%;
     max-height: 88vh;
     overflow-y: auto;
     box-shadow: 0 20px 50px rgba(0,0,0,0.15);
-    animation: pop 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+    overscroll-behavior: contain;
   }
-  @keyframes pop {
-    from { opacity: 0; transform: scale(0.97) translateY(8px); }
-    to { opacity: 1; transform: scale(1) translateY(0); }
+  /* Grabber: tells you the sheet can be pulled down to dismiss */
+  .sheet-grabber {
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    touch-action: none;
   }
+  .sheet-grabber::before {
+    content: '';
+    width: 36px; height: 5px;
+    border-radius: 3px;
+    background: var(--line-strong);
+    transition: background 0.15s, transform 120ms ease-out;
+  }
+  .sheet-grabber:hover::before { background: var(--ink-4); }
+  .sheet-grabber:active { cursor: grabbing; }
+  .sheet-grabber:active::before { transform: scaleX(1.15); background: var(--ink-3); }
+  .modal .sheet-grabber { margin: 0 -32px 8px; }
   .modal-header {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
     margin-bottom: 24px;
+    touch-action: none;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
   }
+  .sheet-grabber, .settings-sidebar-title { user-select: none; -webkit-user-select: none; }
+  .settings-sidebar-title { touch-action: none; cursor: grab; }
   .modal-title {
     font-family: 'Fraunces', serif;
     font-size: 22px;
@@ -955,19 +1019,6 @@
   .result-author { font-size: 11px; color: var(--ink-3); margin-top: 2px; letter-spacing: -0.005em; }
 
   /* ============ SETTINGS ============ */
-  .settings-backdrop {
-    position: fixed; inset: 0;
-    background: rgba(10, 10, 10, 0.35);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    z-index: 150;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    animation: fade 0.2s ease;
-  }
-  .settings-backdrop.open { display: flex; }
   .settings-panel {
     background: var(--bg);
     border-radius: 14px;
@@ -978,7 +1029,13 @@
     grid-template-columns: 180px 1fr;
     overflow: hidden;
     box-shadow: 0 20px 50px rgba(0,0,0,0.15);
-    animation: pop 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+    position: relative;
+  }
+  .settings-panel > .sheet-grabber {
+    position: absolute;
+    top: 0; left: 0; right: 56px;
+    height: 14px;
+    z-index: 2;
   }
   .settings-sidebar {
     background: var(--bg-soft);
@@ -1165,19 +1222,6 @@
   }
 
   /* ============ CONFIRM ============ */
-  .confirm-backdrop {
-    position: fixed; inset: 0;
-    background: rgba(10, 10, 10, 0.4);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    z-index: 200;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    animation: fade 0.2s ease;
-  }
-  .confirm-backdrop.open { display: flex; }
   .confirm-box {
     background: var(--bg);
     border-radius: 12px;
@@ -1185,7 +1229,6 @@
     max-width: 380px;
     width: 100%;
     box-shadow: 0 20px 50px rgba(0,0,0,0.15);
-    animation: pop 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.1);
   }
   .confirm-title {
     font-family: 'Fraunces', serif;
@@ -1227,10 +1270,9 @@
 
   /* ============ RESPONSIVE ============ */
   @media (max-width: 900px) {
-    .sidebar { width: 60px; padding: 22px 8px; }
-    .app .sb-brand, .app .sb-item-label, .app .sb-section { display: none; }
-    .app .sb-item { justify-content: center; padding: 8px; }
-    .main { margin-left: 60px; width: calc(100% - 60px); }
+    /* Stylesheet !important beats the spring's inline values, so small screens always get the rail */
+    .app { --sb-w: 60px !important; --sb-p: 0 !important; }
+    .sb-toggle { display: none; }
     .topbar { padding: 16px 20px; }
     .content { padding: 24px 20px; }
     .metrics { grid-template-columns: repeat(2, 1fr); }
@@ -1243,6 +1285,61 @@
     .settings-sidebar-title { display: none; }
     .settings-tab { white-space: nowrap; }
     .search { width: 160px; }
+  }
+
+  @media (max-width: 640px) {
+    .topbar { gap: 10px; }
+    .topbar-actions { flex: 1; min-width: 0; justify-content: flex-end; }
+    .search-wrap { flex: 1; min-width: 0; }
+    .search { width: 100%; }
+    .add-btn { white-space: nowrap; padding: 8px 12px; }
+    .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 14px; }
+    .metrics { gap: 8px; }
+  }
+
+  /* ============ PRESS FEEDBACK ============
+     Feedback lives on the press (pointer-down), not the release, and it's instant. */
+  html { -webkit-tap-highlight-color: transparent; }
+  button, .book-card, .feature-card, .preset, .accent-swatch, .result-item { touch-action: manipulation; }
+  .btn:active, .add-btn:active, .confirm-btn:active, .sb-item:active, .sb-toggle:active,
+  .settings-tab:active, .toggle-group button:active, .text-toggle button:active,
+  .close-btn:active, .settings-close:active, .section-link:active {
+    transform: scale(0.96);
+    transition-duration: 60ms;
+  }
+  .add-btn, .btn, .confirm-btn, .settings-tab, .toggle-group button, .text-toggle button,
+  .close-btn, .settings-close, .section-link {
+    transition-property: background, color, border-color, opacity, box-shadow, transform;
+    transition-duration: 150ms;
+    transition-timing-function: ease-out;
+  }
+  .book-card:active { transform: translateY(-1px) scale(0.975); transition-duration: 60ms; }
+  .feature-card:active { transform: scale(0.985); transition-duration: 60ms; }
+  .preset:active, .accent-swatch:active { transform: scale(0.92); transition-duration: 60ms; }
+  .result-item:active { background: var(--line); }
+
+  /* ============ TYPE TRACKING ============
+     Small labels get slightly positive tracking for legibility; large text stays tight. */
+  .metric-label, .stat-label, .stat-big-label, .field label, .color-label,
+  .chart-label, .log-date, .feature-progress-text, .book-byline, .setting-desc {
+    letter-spacing: 0.01em;
+  }
+
+  /* ============ ACCESSIBILITY ============ */
+  @media (prefers-reduced-motion: reduce) {
+    .book-card { animation: none; }
+    .book-card:hover, .feature-card:hover { transform: none; }
+    *, *::before, *::after { transition-duration: 1ms !important; }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .topbar { background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; border-bottom: 1px solid var(--line); }
+    .topbar::after { display: none; }
+    .modal-backdrop, .settings-backdrop, .confirm-backdrop { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  }
+  @media (prefers-contrast: more) {
+    :root { --line: #8f8f8a; --line-strong: #6f6f6a; --ink-3: #4a4a4a; --ink-4: #6a6a6a; }
+    .topbar { background: var(--bg); border-bottom: 1px solid var(--ink); }
+    .metric, .stat-card, .search { border-color: var(--ink-3); }
   }
 </style>
 </head>
@@ -1271,7 +1368,7 @@
       </button>
     </nav>
 
-    <div class="sb-section">Shelves</div>
+    <div class="sb-section"><span>Shelves</span></div>
     <nav class="sb-nav">
       <button class="sb-item" data-view="reading">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
@@ -1287,7 +1384,7 @@
       </button>
     </nav>
 
-    <div class="sb-section">Insights</div>
+    <div class="sb-section"><span>Insights</span></div>
     <nav class="sb-nav">
       <button class="sb-item" data-view="stats">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
@@ -1304,7 +1401,7 @@
   </aside>
 
   <main class="main">
-    <div class="topbar">
+    <div class="topbar" id="topbar">
       <div class="page-title" id="pageTitle">Home</div>
       <div class="topbar-actions">
         <div class="search-wrap">
@@ -1325,6 +1422,7 @@
 <!-- MODAL -->
 <div class="modal-backdrop" id="modal">
   <div class="modal">
+    <div class="sheet-grabber" aria-hidden="true"></div>
     <div class="modal-header">
       <div class="modal-title" id="modalTitle">New book</div>
       <button class="close-btn" id="closeModal">✕</button>
@@ -1387,6 +1485,7 @@
 <!-- SETTINGS -->
 <div class="settings-backdrop" id="settingsModal">
   <div class="settings-panel">
+    <div class="sheet-grabber" aria-hidden="true"></div>
     <div class="settings-sidebar">
       <div class="settings-sidebar-title">Settings</div>
       <button class="settings-tab active" data-tab="general">
@@ -1429,6 +1528,323 @@
 </div>
 
 <script>
+// ================================================================
+// MOTION ENGINE
+// Springs described the way Apple describes them: a damping ratio (1 = settles with no
+// overshoot, below 1 = bounces) and a response in seconds (lower = snappier). A spring has
+// no fixed duration, can be retargeted at any moment, and keeps its velocity when it is,
+// which is what makes every animation below interruptible.
+// ================================================================
+const reducedMotionQuery = matchMedia('(prefers-reduced-motion: reduce)');
+const reducedMotion = () => reducedMotionQuery.matches;
+
+class Spring {
+  constructor({ value = 0, damping = 1, response = 0.4, precision = 0.001, onUpdate, onRest } = {}) {
+    this.value = value; this.target = value; this.velocity = 0;
+    this.damping = damping; this.response = response; this.precision = precision;
+    this.onUpdate = onUpdate; this.onRest = onRest;
+    this.frame = null; this.last = 0;
+  }
+  get running() { return this.frame !== null; }
+  // Retarget from wherever it is right now, carrying its current velocity
+  to(target, { velocity, damping, response } = {}) {
+    this.target = target;
+    if (velocity !== undefined) this.velocity = velocity;
+    if (damping !== undefined) this.damping = damping;
+    if (response !== undefined) this.response = response;
+    if (!this.running) {
+      this.last = performance.now();
+      this.frame = requestAnimationFrame(t => this.step(t));
+    }
+    return this;
+  }
+  // Jump straight to a value (used for 1:1 finger tracking)
+  set(value) {
+    this.stop();
+    this.value = value; this.target = value; this.velocity = 0;
+    this.onUpdate?.(value);
+  }
+  stop() {
+    if (this.frame !== null) cancelAnimationFrame(this.frame);
+    this.frame = null;
+  }
+  step(now) {
+    const dt = Math.min(0.064, Math.max(0, (now - this.last) / 1000));
+    this.last = now;
+    // Apple's mapping from (damping, response) to physics, with mass = 1
+    const stiffness = Math.pow((2 * Math.PI) / this.response, 2);
+    const friction = (4 * Math.PI * this.damping) / this.response;
+    const steps = Math.max(1, Math.ceil(dt / 0.004));
+    const h = dt / steps;
+    for (let i = 0; i < steps; i++) {
+      const force = -stiffness * (this.value - this.target) - friction * this.velocity;
+      this.velocity += force * h;
+      this.value += this.velocity * h;
+    }
+    if (Math.abs(this.value - this.target) < this.precision && Math.abs(this.velocity) < this.precision * 10) {
+      this.value = this.target; this.velocity = 0; this.frame = null;
+      this.onUpdate?.(this.value);
+      this.onRest?.(this.value);
+      return;
+    }
+    this.onUpdate?.(this.value);
+    this.frame = requestAnimationFrame(t => this.step(t));
+  }
+}
+
+// Where a flick is heading, the same exponential decay scrolling uses (Apple's sample code)
+function projectMomentum(velocity, decelerationRate = 0.998) {
+  return (velocity / 1000) * decelerationRate / (1 - decelerationRate);
+}
+
+// Soft boundary: the further past the edge, the less the element follows
+function rubberband(overshoot, dimension, constant = 0.55) {
+  return (overshoot * dimension * constant) / (dimension + constant * Math.abs(overshoot));
+}
+
+// Keeps the last ~100ms of pointer positions so we know the finger's speed at release
+function velocityTracker() {
+  let samples = [];
+  return {
+    reset(y, t) { samples = [{ y, t }]; },
+    add(y, t) {
+      samples.push({ y, t });
+      while (samples.length > 2 && t - samples[0].t > 100) samples.shift();
+    },
+    velocity(now) {
+      if (samples.length < 2) return 0;
+      const a = samples[0], b = samples[samples.length - 1];
+      if (now - b.t > 80) return 0; // finger stopped before lifting
+      const dt = (b.t - a.t) / 1000;
+      return dt > 0 ? (b.y - a.y) / dt : 0;
+    }
+  };
+}
+
+// Remember what was pressed so sheets can grow out of the thing that opened them
+let lastTrigger = null;
+document.addEventListener('pointerdown', e => {
+  lastTrigger = e.target.closest('button, .book-card, .feature-card');
+}, true);
+// iOS Safari only shows :active press states when a touch listener exists
+document.addEventListener('touchstart', () => {}, { passive: true });
+
+// ================================================================
+// SHEETS: Add/Edit book, Settings, Confirm
+// - grow out of the element that opened them, and shrink back into it on close
+// - can be grabbed and pulled down to dismiss, tracking the finger 1:1
+// - a flick is projected forward to decide dismiss vs. snap back
+// - pulling up rubber-bands instead of hitting a wall
+// - opening or closing can be reversed at any instant
+// ================================================================
+function createSheet({ backdrop, panel, handles = [], minScale = 0.9 }) {
+  let isOpen = false;
+  let mode = 'normal';          // 'drag-dismiss' while it slides out under your finger's momentum
+  let dragY = 0;
+  let height = 1;
+
+  const progress = new Spring({
+    damping: 1, response: 0.35, precision: 0.001,
+    onUpdate: apply,
+    onRest: v => { if (v === 0 && !isOpen) hide(); }
+  });
+  const drag = new Spring({
+    damping: 1, response: 0.35, precision: 0.5,
+    onUpdate: v => { dragY = v; apply(); },
+    onRest: () => { if (mode === 'drag-dismiss') { progress.set(0); hide(); } }
+  });
+
+  function apply() {
+    const p = Math.max(0, progress.value);
+    const dragFade = 1 - Math.min(1, Math.max(0, dragY) / (height * 1.1));
+    backdrop.style.setProperty('--scrim', (p * dragFade).toFixed(3));
+    if (mode === 'drag-dismiss') {
+      panel.style.opacity = '1';
+      panel.style.transform = `translate3d(0, ${dragY}px, 0)`;
+      return;
+    }
+    panel.style.opacity = Math.min(1, p * 1.4).toFixed(3);
+    const scale = reducedMotion() ? 1 : minScale + (1 - minScale) * p;
+    panel.style.transform = `translate3d(0, ${dragY}px, 0) scale(${scale})`;
+  }
+
+  function hide() {
+    backdrop.classList.remove('open');
+    backdrop.style.pointerEvents = '';
+    backdrop.style.removeProperty('--scrim');
+    mode = 'normal';
+    drag.stop(); drag.value = drag.target = 0; drag.velocity = 0; dragY = 0;
+  }
+
+  function open(trigger = lastTrigger) {
+    const alreadyVisible = backdrop.classList.contains('open');
+    isOpen = true;
+    backdrop.style.pointerEvents = '';
+    if (!alreadyVisible) {
+      mode = 'normal';
+      drag.stop(); drag.value = drag.target = 0; drag.velocity = 0; dragY = 0;
+      backdrop.classList.add('open');
+      panel.style.transform = 'none';
+      const r = panel.getBoundingClientRect();
+      height = r.height;
+      if (trigger && trigger.isConnected) {
+        const t = trigger.getBoundingClientRect();
+        panel.style.transformOrigin = `${t.left + t.width / 2 - r.left}px ${t.top + t.height / 2 - r.top}px`;
+      } else {
+        panel.style.transformOrigin = '50% 50%';
+      }
+      progress.set(0);
+    } else if (mode === 'drag-dismiss') {
+      // Caught it on the way out: bring it back from exactly where it is
+      mode = 'normal';
+      drag.to(0, { damping: 0.85, response: 0.35 });
+    }
+    progress.to(1, { damping: 1, response: reducedMotion() ? 0.2 : 0.35 });
+  }
+
+  function close() {
+    if (!isOpen) return;
+    isOpen = false;
+    backdrop.style.pointerEvents = 'none'; // never block the page while the sheet leaves
+    if (mode === 'drag-dismiss') return;
+    if (dragY !== 0) drag.to(0);
+    progress.to(0, { damping: 1, response: reducedMotion() ? 0.2 : 0.3 });
+  }
+
+  handles.filter(Boolean).forEach(handle => {
+    let pointerId = null, startY = 0, base = 0, committed = false;
+    const tracker = velocityTracker();
+
+    handle.addEventListener('pointerdown', e => {
+      if (!isOpen || e.button !== 0) return;
+      if (e.target.closest('button, input, select, textarea, a')) return;
+      e.preventDefault(); // a drag should never start a text selection
+      pointerId = e.pointerId;
+      startY = e.clientY;
+      committed = false;
+      tracker.reset(e.clientY, e.timeStamp);
+      handle.setPointerCapture(pointerId);
+    });
+
+    handle.addEventListener('pointermove', e => {
+      if (e.pointerId !== pointerId) return;
+      tracker.add(e.clientY, e.timeStamp);
+      let dy = e.clientY - startY;
+      if (!committed) {
+        if (Math.abs(dy) < 6) return; // small threshold before committing to a drag
+        committed = true;
+        drag.stop();                  // grab it mid-flight from its live position
+        base = Math.max(0, drag.value);
+        height = panel.offsetHeight || 1;
+        startY = e.clientY;
+        dy = 0;
+      }
+      const raw = base + dy;
+      const y = raw >= 0 ? raw : rubberband(raw, height);
+      drag.value = drag.target = y; drag.velocity = 0;
+      dragY = y;
+      apply();
+    });
+
+    const end = e => {
+      if (e.pointerId !== pointerId) return;
+      pointerId = null;
+      if (!committed) return;
+      const v = tracker.velocity(e.timeStamp);
+      const landing = dragY + projectMomentum(v);
+      if (v > 900 || (landing > height * 0.35 && v > -200)) {
+        // Dismiss, continuing at exactly the finger's speed so there's no seam
+        isOpen = false;
+        mode = 'drag-dismiss';
+        backdrop.style.pointerEvents = 'none';
+        drag.to(window.innerHeight, { velocity: v, damping: 1, response: 0.28 });
+      } else {
+        // Snap home with a touch of bounce, because the gesture carried momentum
+        drag.to(0, { velocity: v, damping: 0.8, response: 0.32 });
+      }
+    };
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+  });
+
+  return { open, close, get isOpen() { return isOpen; } };
+}
+
+const modalSheet = createSheet({
+  backdrop: document.getElementById('modal'),
+  panel: document.querySelector('#modal .modal'),
+  handles: [document.querySelector('#modal .sheet-grabber'), document.querySelector('#modal .modal-header')]
+});
+const settingsSheet = createSheet({
+  backdrop: document.getElementById('settingsModal'),
+  panel: document.querySelector('#settingsModal .settings-panel'),
+  handles: [document.querySelector('#settingsModal .sheet-grabber'), document.querySelector('.settings-sidebar-title')]
+});
+const confirmSheet = createSheet({
+  backdrop: document.getElementById('confirmDialog'),
+  panel: document.querySelector('#confirmDialog .confirm-box'),
+  minScale: 0.94
+});
+
+// Progress bars spring to their value. When they grow because you logged pages, they
+// overshoot slightly, like something being filled. First appearance has no bounce.
+const barMemory = new Map();
+function animateProgress(scope) {
+  scope.querySelectorAll('[data-bar]').forEach(el => {
+    const key = el.dataset.bar;
+    const target = Number(el.dataset.pct) / 100;
+    const seen = barMemory.has(key);
+    const from = seen ? barMemory.get(key) : 0;
+    barMemory.set(key, target);
+    const paint = v => { el.style.transform = `scaleX(${Math.max(0, v)})`; };
+    if (reducedMotion() || from === target) { paint(target); return; }
+    paint(from);
+    const grew = seen && target > from;
+    new Spring({
+      value: from, damping: grew ? 0.7 : 1, response: grew ? 0.45 : 0.6,
+      precision: 0.0005, onUpdate: paint
+    }).to(target);
+  });
+}
+
+// Weekly chart bars rise in sequence when the Stats page opens
+function animateChart(scope) {
+  scope.querySelectorAll('.chart-bar[data-h]').forEach((el, i) => {
+    const h = Number(el.dataset.h);
+    const paint = v => { el.style.height = Math.max(0, v) + 'px'; };
+    if (reducedMotion()) { paint(h); return; }
+    paint(0);
+    setTimeout(() => {
+      new Spring({ value: 0, damping: 1, response: 0.5, precision: 0.3, onUpdate: paint }).to(h);
+    }, i * 45);
+  });
+}
+
+// Sidebar collapse: a spring on 0..1, so a second click mid-motion reverses smoothly
+const appEl = document.getElementById('app');
+const SB_MIN = 60, SB_MAX = 220;
+const sidebarSpring = new Spring({
+  value: 1, damping: 1, response: 0.38, precision: 0.001,
+  onUpdate: p => {
+    const clamped = Math.min(1, Math.max(0, p));
+    appEl.style.setProperty('--sb-w', (SB_MIN + (SB_MAX - SB_MIN) * p).toFixed(2) + 'px');
+    // Labels fade faster than the rail moves, so text never squeezes against the edge
+    appEl.style.setProperty('--sb-p', (clamped * clamped).toFixed(3));
+  }
+});
+
+// Scroll edge effect under the translucent top bar
+const topbarEl = document.getElementById('topbar');
+const updateTopbarEdge = () => topbarEl.classList.toggle('scrolled', window.scrollY > 4);
+window.addEventListener('scroll', updateTopbarEdge, { passive: true });
+
+// Escape closes whichever sheet is on top (the confirm dialog handles its own keys)
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || confirmSheet.isOpen) return;
+  if (settingsSheet.isOpen) closeSettings();
+  else if (modalSheet.isOpen) closeModal();
+});
+
 const API_KEY = 'AIzaSyDOHUb89V3r5N3QWnqALCmW6TlI7VD_urc';
 const STORAGE_KEY = 'shelf_library_v1';
 const LOG_KEY = 'shelf_log_v1';
@@ -1531,6 +1947,8 @@ function render() {
   if(currentView==='home') renderHome(body);
   else if(currentView==='stats') renderStats(body);
   else renderShelfView(body, currentView);
+  animateProgress(body);
+  animateChart(body);
 }
 
 function renderHome(body) {
@@ -1615,7 +2033,7 @@ function bookCard(b, i) {
   const pct = b.pages>0 ? Math.min(100, Math.round((b.progress/b.pages)*100)) : 0;
   const statusLabel = { reading:'Reading', want:'Want to Read', finished:'Finished' }[b.status];
   const extra = b.status==='reading' && b.pages>0 ? `<b>${pct}%</b>` : '';
-  const progress = b.status==='reading' && b.pages>0 ? `<div class="book-progress"><div class="book-progress-fill" style="width:${pct}%"></div></div>` : '';
+  const progress = b.status==='reading' && b.pages>0 ? `<div class="book-progress"><div class="book-progress-fill" data-bar="b-${b.id}" data-pct="${pct}"></div></div>` : '';
   return `
     <div class="book-card" data-id="${b.id}" style="animation-delay:${Math.min(i*0.03, 0.4)}s">
       <div class="book" style="background:${b.color}; color:${textCol};">
@@ -1643,7 +2061,7 @@ function featureCard(b) {
         <div class="feature-title">${escapeHtml(b.title)}</div>
         <div class="feature-author">by ${escapeHtml(b.author||'Unknown')}</div>
         ${b.pages>0 ? `
-          <div class="feature-progress"><div class="feature-progress-fill" style="width:${pct}%"></div></div>
+          <div class="feature-progress"><div class="feature-progress-fill" data-bar="f-${b.id}" data-pct="${pct}"></div></div>
           <div class="feature-progress-text">
             <span>Page <b>${b.progress}</b> of ${b.pages}</span>
             <span>${pct}%</span>
@@ -1732,7 +2150,7 @@ function renderStats(body) {
           ${dayTotals.map(v=>{
             const h = v===0 ? 0 : Math.max(6, Math.round((v/maxDay)*140));
             return `<div class="chart-col">
-              ${v>0 ? `<div class="chart-bar" style="height:${h}px"><span class="chart-value">${v}</span></div>` : `<div class="chart-bar empty"></div>`}
+              ${v>0 ? `<div class="chart-bar" data-h="${h}" style="height:0px"><span class="chart-value">${v}</span></div>` : `<div class="chart-bar is-empty"></div>`}
             </div>`;
           }).join('')}
         </div>
@@ -1766,7 +2184,7 @@ function openAdd() {
   setForm({ title:'', author:'', status:'want', pages:'', progress:0, color:settings.defaultBookColor, textColor:settings.defaultTextColor });
   document.getElementById('bookSearch').value = '';
   document.getElementById('searchResults').innerHTML = '';
-  document.getElementById('modal').classList.add('open');
+  modalSheet.open();
 }
 function openEdit(bookId) {
   const b = library.find(x=>x.id===bookId);
@@ -1777,9 +2195,9 @@ function openEdit(bookId) {
   setForm(b);
   document.getElementById('bookSearch').value = '';
   document.getElementById('searchResults').innerHTML = '';
-  document.getElementById('modal').classList.add('open');
+  modalSheet.open();
 }
-function closeModal() { document.getElementById('modal').classList.remove('open'); }
+function closeModal() { modalSheet.close(); }
 function setForm(b) {
   document.getElementById('fTitle').value = b.title||'';
   document.getElementById('fAuthor').value = b.author||'';
@@ -1825,10 +2243,10 @@ function updatePreview() {
 
 let activeSettingsTab='general';
 function openSettings() {
-  document.getElementById('settingsModal').classList.add('open');
   renderSettingsTab(activeSettingsTab);
+  settingsSheet.open();
 }
-function closeSettings() { document.getElementById('settingsModal').classList.remove('open'); }
+function closeSettings() { settingsSheet.close(); }
 function renderSettingsTab(tab) {
   activeSettingsTab = tab;
   document.querySelectorAll('.settings-tab').forEach(el=>el.classList.toggle('active', el.dataset.tab===tab));
@@ -1976,9 +2394,9 @@ function customConfirm(title, message) {
     const backdrop = document.getElementById('confirmDialog');
     document.getElementById('confirmTitle').textContent = title;
     document.getElementById('confirmMessage').textContent = message;
-    backdrop.classList.add('open');
+    confirmSheet.open();
     const cleanup = (r) => {
-      backdrop.classList.remove('open');
+      confirmSheet.close();
       okBtn.removeEventListener('click', onOk);
       cancelBtn.removeEventListener('click', onCancel);
       backdrop.removeEventListener('click', onBackdrop);
@@ -1998,9 +2416,10 @@ function customConfirm(title, message) {
 }
 
 document.getElementById('sbToggle').addEventListener('click', () => {
-  document.getElementById('app').classList.toggle('collapsed');
-  settings.sidebarCollapsed = document.getElementById('app').classList.contains('collapsed');
+  settings.sidebarCollapsed = !settings.sidebarCollapsed;
+  appEl.classList.toggle('collapsed', settings.sidebarCollapsed);
   saveSettings();
+  sidebarSpring.to(settings.sidebarCollapsed ? 0 : 1, { damping: 1, response: reducedMotion() ? 0.15 : 0.38 });
 });
 document.querySelectorAll('.sb-item[data-view]').forEach(el => {
   el.addEventListener('click', () => setView(el.dataset.view));
@@ -2120,7 +2539,9 @@ async function fetchBooks(q) {
 buildPresets();
 load();
 applyAccent();
-if(settings.sidebarCollapsed) document.getElementById('app').classList.add('collapsed');
+sidebarSpring.set(settings.sidebarCollapsed ? 0 : 1);
+appEl.classList.toggle('collapsed', !!settings.sidebarCollapsed);
+updateTopbarEdge();
 setView('home');
 </script>
 </body>
